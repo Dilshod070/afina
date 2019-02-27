@@ -56,8 +56,7 @@ private:
             next(nullptr), prev(nullptr)
         {
         }
-
-        lru_node() : key(""), value(""), next(nullptr), prev(nullptr) {}
+        // lru_node() : key(""), value(""), next(nullptr), prev(nullptr) {}
     };
 
     // Maximum number of bytes could be stored in this cache.
@@ -78,7 +77,7 @@ private:
              std::less<std::string>> _lru_index;
 
     bool _move_to_tail(lru_node &node);
-    bool _insert(lru_node *node);
+    bool _insert(lru_node &node);
     bool _delete_oldest();
     bool _delete(lru_node &node);
 };

@@ -6,12 +6,16 @@ namespace Backend {
 // See MapBasedGlobalLockImpl.h
 bool SimpleLRU::Put(const std::string &key, const std::string &value)
 {
-	auto it = _lru_index.find(std::reference_wrapper<const std::string>(key));
+	auto it = _lru_index.find(key);
 	if (it != _lru_index.end()) {
 		_delete(it->second.get());
 	}
-	std::unique_ptr<lru_node> new_node(new lru_node(key, value));
-	_insert(new_node.get());
+
+	// std::unique_ptr<lru_node> new_node(new lru_node(key, value));
+	lru_node *new_node(new lru_node(key, value));
+	_lru_index.insert(std::make_pair(std::reference_wrapper<const std::string>(new_node->key), 
+             						 std::reference_wrapper<lru_node>(*new_node)));
+	return _insert(*new_node);
 }
 
 // See MapBasedGlobalLockImpl.h
@@ -21,9 +25,10 @@ bool SimpleLRU::PutIfAbsent(const std::string &key, const std::string &value)
 	if (it == _lru_index.end()) {
 		return false;
 	}
-	_delete(it->second.get());
-	std::unique_ptr<lru_node> new_node(new lru_node(key, value));
-	_insert(new_node.get());
+	lru_node *new_node(new lru_node(key, value));
+	_lru_index.insert(std::make_pair(std::reference_wrapper<const std::string>(new_node->key), 
+             						 std::reference_wrapper<lru_node>(*new_node)));
+	return _insert(*new_node);
 
 }
 
@@ -37,9 +42,10 @@ bool SimpleLRU::Set(const std::string &key, const std::string &value)
 	if (!_delete(it->second.get())) {
 		return false;
 	}
-	std::unique_ptr<lru_node> new_node(new lru_node(key, value));
-	_insert(new_node.get());
-	return true;
+	lru_node *new_node(new lru_node(key, value));
+	_lru_index.insert(std::make_pair(std::reference_wrapper<const std::string>(new_node->key), 
+             						 std::reference_wrapper<lru_node>(*new_node)));
+	return _insert(*new_node);
 }
 
 // See MapBasedGlobalLockImpl.h
@@ -60,7 +66,8 @@ bool SimpleLRU::Get(const std::string &key, std::string &value)
 		return false;
 	}
 	value = it->second.get().value;
-	return _move_to_tail(it->second.get());
+	// return true;
+	// return _move_to_tail(it->second.get());
 }
 
 bool SimpleLRU::_move_to_tail(lru_node &node)
@@ -85,9 +92,32 @@ bool SimpleLRU::_move_to_tail(lru_node &node)
     return false;
 }
 
-bool SimpleLRU::_insert(lru_node *node)
+// bool SimpleLRU::_insert(lru_node *node)
+// {
+// 	size_t size = node->key.size() + node->value.size();
+// 	if (size > _max_size) {
+// 		return false;
+// 	}
+// 	while (size > _free_size) {
+// 		_delete_oldest();
+// 	}
+// 	_free_size -= size;
+// 	if (_lru_tail == nullptr) {
+// 		_lru_head.reset(node);
+// 		node->next = nullptr;
+// 		node->prev = nullptr;
+// 		_lru_tail = node;
+// 	} else {
+// 		_lru_tail->next.reset(node);
+// 		node->next = nullptr;
+// 		node->prev = _lru_tail;
+// 		_lru_tail = node;
+// 	}
+// 	return true;
+// }
+bool SimpleLRU::_insert(lru_node &node)
 {
-	size_t size = node->key.size() + node->value.size();
+	size_t size = node.key.size() + node.value.size();
 	if (size > _max_size) {
 		return false;
 	}
@@ -96,15 +126,15 @@ bool SimpleLRU::_insert(lru_node *node)
 	}
 	_free_size -= size;
 	if (_lru_tail == nullptr) {
-		_lru_head.reset(node);
-		node->next = nullptr;
-		node->prev = nullptr;
-		_lru_tail = node;
+		node.next = nullptr;
+		node.prev = nullptr;
+		_lru_tail = &node;
+		_lru_head.reset(&node);
 	} else {
-		_lru_tail->next.reset(node);
-		node->next = nullptr;
-		node->prev = _lru_tail;
-		_lru_tail = node;
+		_lru_tail->next.reset(&node);
+		node.next = nullptr;
+		node.prev = _lru_tail;
+		_lru_tail = &node;
 	}
 	return true;
 }
@@ -112,6 +142,7 @@ bool SimpleLRU::_insert(lru_node *node)
 bool SimpleLRU::_delete_oldest()
 {
 	size_t size = _lru_head->key.size() + _lru_head->value.size();
+	_lru_index.erase(_lru_head->key);
 	if (_lru_head->next == nullptr) {
 		_lru_head = nullptr;
 		_lru_tail = nullptr;
@@ -125,21 +156,21 @@ bool SimpleLRU::_delete_oldest()
 
 bool SimpleLRU::_delete(lru_node &node)
 {
-	size_t size = node.key.size() + node.value.size();
 	if (node.prev == nullptr){ // Node is first
 		return _delete_oldest();
-	} else if (node.next == nullptr) { // Node is last
-		node.prev->next.swap(node.next);
-		_lru_tail = node.prev;
-		_free_size += size;
-  		return true;
-  	} else { // Node is in center
-  		node.prev->next.swap(node.next);
-		node.next->prev = node.prev;
-  		_free_size += size;
-  		return true;
-  	}
-    return false;
+	} else {
+		size_t size = node.key.size() + node.value.size();
+		_lru_index.erase(_lru_head->key);
+		if (node.next == nullptr) { // Node is last
+			node.prev->next.swap(node.next);
+			_lru_tail = node.prev;
+	  	} else { // Node is in center
+	  		node.prev->next.swap(node.next);
+			node.next->prev = node.prev;
+	  	}
+	  	_free_size += size;
+	  	return true;
+	}
 }
 
 } // namespace Backend
