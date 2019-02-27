@@ -66,8 +66,7 @@ bool SimpleLRU::Get(const std::string &key, std::string &value)
 		return false;
 	}
 	value = it->second.get().value;
-	// return true;
-	// return _move_to_tail(it->second.get());
+	return _move_to_tail(it->second.get());
 }
 
 bool SimpleLRU::_move_to_tail(lru_node &node)
@@ -92,29 +91,6 @@ bool SimpleLRU::_move_to_tail(lru_node &node)
     return false;
 }
 
-// bool SimpleLRU::_insert(lru_node *node)
-// {
-// 	size_t size = node->key.size() + node->value.size();
-// 	if (size > _max_size) {
-// 		return false;
-// 	}
-// 	while (size > _free_size) {
-// 		_delete_oldest();
-// 	}
-// 	_free_size -= size;
-// 	if (_lru_tail == nullptr) {
-// 		_lru_head.reset(node);
-// 		node->next = nullptr;
-// 		node->prev = nullptr;
-// 		_lru_tail = node;
-// 	} else {
-// 		_lru_tail->next.reset(node);
-// 		node->next = nullptr;
-// 		node->prev = _lru_tail;
-// 		_lru_tail = node;
-// 	}
-// 	return true;
-// }
 bool SimpleLRU::_insert(lru_node &node)
 {
 	size_t size = node.key.size() + node.value.size();

@@ -62,15 +62,13 @@ TEST(StorageTest, BigTest) {
     const size_t length = 20;
     SimpleLRU storage(2 * 100000 * length);
 
-    // for (long i = 0; i < 100000; ++i) {
-    for (long i = 0; i < 10000; ++i) {
+    for (long i = 0; i < 100000; ++i) {
         auto key = pad_space("Key " + std::to_string(i), length);
         auto val = pad_space("Val " + std::to_string(i), length);
         storage.Put(key, val);
     }
 
-    // for (long i = 99999; i >= 0; --i) {
-    for (long i = 9999; i >= 0; --i) {
+    for (long i = 99999; i >= 0; --i) {
         auto key = pad_space("Key " + std::to_string(i), length);
         auto val = pad_space("Val " + std::to_string(i), length);
 
