@@ -27,7 +27,7 @@ public:
     void flush() override { _file_helper.flush(); }
     void set_force_flush(bool force_flush) { _force_flush = force_flush; }
     void reopen() {
-        SPDLOG_DEBUG("Reopen: " + _file_helper.filename());
+        // SPDLOG_DEBUG("Reopen: " + _file_helper.filename());
         std::lock_guard<Mutex> lock(spdlog::sinks::base_sink<Mutex>::_mutex);
         _file_helper.reopen(false);
     }
@@ -264,7 +264,7 @@ void ServiceImpl::reopen_all() {
     // Collect all sinks
     std::deque<spdlog::sink_ptr> sinks;
     auto collect_sinks = [&sinks](std::shared_ptr<spdlog::logger> log) {
-        SPDLOG_DEBUG("Collect sinks from: " + log->name());
+        // SPDLOG_DEBUG("Collect sinks from: " + log->name());
         const std::vector<spdlog::sink_ptr> &log_sink = log->sinks();
         sinks.insert(sinks.end(), log_sink.begin(), log_sink.end());
     };

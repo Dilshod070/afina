@@ -3,6 +3,8 @@
 
 #include <atomic>
 #include <thread>
+#include <mutex>
+#include <array>
 
 #include <afina/network/Server.h>
 
@@ -52,6 +54,23 @@ private:
 
     // Thread to run network on
     std::thread _thread;
+
+    struct Worker {
+        std::thread thread;
+        // int socket;
+        bool busy;
+
+        Worker(int client_socket = -1) : thread(), /*socket(client_socket),*/ busy(false) {}
+        ~Worker() { if(thread.joinable()) { thread.join(); } }
+    };
+
+    static const int _MAX_WORKERS_ = 256;
+    std::array<Worker, _MAX_WORKERS_> _workers;
+    std::mutex _workers_mutex;
+
+    // Function to execute by thread - Worker
+    int find_free_worker();
+    void OnWork(int client_socket, int worker_idx);
 };
 
 } // namespace MTblocking
