@@ -87,15 +87,15 @@ void ServerImpl::Stop() {
 
 // See Server.h
 void ServerImpl::Join() {
-    // assert(_thread.joinable());
     for (int i = 0; i < _MAX_WORKERS_; ++i)
     {
-        if (!_workers[i].thread.joinable()) {
+        if (_workers[i].thread.joinable()) {
             // sleep on condwar?
+            _workers[i].thread.join();
         }
-        _workers[i].thread.join();
-    }
-    // _thread.join();
+    } 
+    assert(_thread.joinable());
+    _thread.join();
     close(_server_socket);
 }
 
@@ -154,10 +154,10 @@ void ServerImpl::OnRun() {
                 close(client_socket);
                 continue;
             } else {
+                std::lock_guard<std::mutex> guard(_workers_mutex);
                 if (_workers[worker_idx].thread.joinable()) {
                     _workers[worker_idx].thread.join();
                 }
-                // std::lock_guard<std::mutex> guard(_workers_mutex);
                 _workers[worker_idx].thread = std::thread(&ServerImpl::OnWork, this, client_socket, worker_idx);
             }
         }
@@ -165,7 +165,7 @@ void ServerImpl::OnRun() {
 
     // Cleanup on exit...
     _logger->warn("Network stopped");
-    //  Join();
+     Join();
 }
 
 int ServerImpl::find_free_worker()
