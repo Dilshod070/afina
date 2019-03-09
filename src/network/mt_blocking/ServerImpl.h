@@ -24,13 +24,6 @@ class ServerImpl : public Server {
 public:
     ServerImpl(std::shared_ptr<Afina::Storage> ps, std::shared_ptr<Logging::Service> pl);
     ~ServerImpl();
-    // {
-    //     for (int i = 0; i < _MAX_WORKERS_; ++i) {
-    //         if (_workers[i].thread.joinable()) {
-    //             _workers[i].thread.join();
-    //         }
-    //     }
-    // }
 
     // See Server.h
     void Start(uint16_t port, uint32_t, uint32_t) override;
@@ -72,6 +65,7 @@ private:
     };
 
     static const int _MAX_WORKERS_ = 256;
+    std::atomic<int> _workers_current;
     std::array<Worker, _MAX_WORKERS_> _workers;
     std::mutex _workers_mutex;
 

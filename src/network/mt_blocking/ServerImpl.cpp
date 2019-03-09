@@ -76,24 +76,33 @@ void ServerImpl::Start(uint16_t port, uint32_t n_accept, uint32_t n_workers) {
     }
 
     running.store(true);
+    _workers_current.store(0);
     _thread = std::thread(&ServerImpl::OnRun, this);
 }
 
 // See Server.h
 void ServerImpl::Stop() {
     running.store(false);
+    while(true /* ? */) {
+        std::lock_guard<std::mutex> guard(_workers_mutex);
+        if (_workers_current.load() == 0) {
+            shutdown(_server_socket, SHUT_RDWR);
+            return;
+        }
+    }
     shutdown(_server_socket, SHUT_RDWR);
 }
 
 // See Server.h
 void ServerImpl::Join() {
+    std::lock_guard<std::mutex> guard(_workers_mutex);
     for (int i = 0; i < _MAX_WORKERS_; ++i)
     {
         if (_workers[i].thread.joinable()) {
-            // sleep on condwar?
             _workers[i].thread.join();
         }
     } 
+
     assert(_thread.joinable());
     _thread.join();
     close(_server_socket);
@@ -154,18 +163,20 @@ void ServerImpl::OnRun() {
                 close(client_socket);
                 continue;
             } else {
+                // close(client_socket);
+                _logger->warn("launching thread (current workers: {})\n", _workers_current.load());
                 std::lock_guard<std::mutex> guard(_workers_mutex);
                 if (_workers[worker_idx].thread.joinable()) {
                     _workers[worker_idx].thread.join();
                 }
                 _workers[worker_idx].thread = std::thread(&ServerImpl::OnWork, this, client_socket, worker_idx);
+                // _workers[worker_idx].thread.join();
             }
         }
     }
 
     // Cleanup on exit...
     _logger->warn("Network stopped");
-     Join();
 }
 
 int ServerImpl::find_free_worker()
@@ -174,6 +185,8 @@ int ServerImpl::find_free_worker()
     for (int i = 0; i < _MAX_WORKERS_; ++i)
     {
         if (!_workers[i].busy) {
+             _logger->warn("Worker {} accepted new task", i);
+             _workers_current += 1;
             _workers[i].busy = true;
             return i;
         }
@@ -196,7 +209,7 @@ void ServerImpl::OnWork(int client_socket, int worker_idx)
     try {
         int readed_bytes = -1;
         char client_buffer[4096];
-        while ((readed_bytes = read(client_socket, client_buffer, sizeof(client_buffer))) > 0) {
+        while ((readed_bytes = read(client_socket, client_buffer, sizeof(client_buffer))) > 0 && running.load()) {
             _logger->warn("Got {} bytes from socket", readed_bytes);
 
             // Single block of data readed from the socket could trigger inside actions a multiple times,
@@ -247,19 +260,24 @@ void ServerImpl::OnWork(int client_socket, int worker_idx)
                     std::string result;
                     command_to_execute->Execute(*pStorage, argument_for_command, result);
 
-                    // Send response
+                    // Send response 
                     result += "\r\n";
                     if (send(client_socket, result.data(), result.size(), 0) <= 0) {
                         throw std::runtime_error("Failed to send response");
                     }
 
                     // Prepare for the next command
+                    _logger->warn("{} bytes left, resetting", readed_bytes);
                     command_to_execute.reset();
                     argument_for_command.resize(0);
                     parser.Reset();
+                    _logger->warn("{} bytes left after reset", readed_bytes);
                 }
             } // while (readed_bytes)
+            _logger->warn("Got some  bytes ({}) from socket left", readed_bytes);
         }
+
+        _logger->warn("Got all commands, {} bytes left", readed_bytes);
 
         if (readed_bytes == 0) {
             _logger->warn("Connection closed");
@@ -276,6 +294,7 @@ void ServerImpl::OnWork(int client_socket, int worker_idx)
 
     std::lock_guard<std::mutex> guard(_workers_mutex);
     _workers[worker_idx].busy = false;
+    _workers_current.store(_workers_current.load() - 1);
 }
 
 } // namespace MTblocking
