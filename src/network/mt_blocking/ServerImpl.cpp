@@ -8,6 +8,7 @@
 #include <mutex>
 #include <array>
 #include <thread>
+#include <condition_variable>
 
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -82,26 +83,25 @@ void ServerImpl::Start(uint16_t port, uint32_t n_accept, uint32_t n_workers) {
 
 // See Server.h
 void ServerImpl::Stop() {
+     _logger->debug("Stoping: current workers: {}", _workers_current.load());
+
     running.store(false);
-    while(true /* ? */) {
-        std::lock_guard<std::mutex> guard(_workers_mutex);
-        if (_workers_current.load() == 0) {
-            shutdown(_server_socket, SHUT_RDWR);
-            return;
-        }
-    }
     shutdown(_server_socket, SHUT_RDWR);
+
+    // std::unique_lock<std::mutex> guard(_workers_mutex) ;
+    // while(_workers_current.load() != 0) {
+    //     _close.wait(guard); // bug here :c
+    // }
 }
 
 // See Server.h
 void ServerImpl::Join() {
-    std::lock_guard<std::mutex> guard(_workers_mutex);
-    for (int i = 0; i < _MAX_WORKERS_; ++i)
-    {
-        if (_workers[i].thread.joinable()) {
-            _workers[i].thread.join();
-        }
-    } 
+    _logger->debug("Join ???");
+
+    std::unique_lock<std::mutex> guard(_workers_mutex) ;
+    while(_workers_current.load() != 0) {
+        _close.wait(guard); // bug here :c
+    }
 
     assert(_thread.joinable());
     _thread.join();
@@ -110,15 +110,6 @@ void ServerImpl::Join() {
 
 // See Server.h
 void ServerImpl::OnRun() {
-    // Here is connection state
-    // - parser: parse state of the stream
-    // - command_to_execute: last command parsed out of stream
-    // - arg_remains: how many bytes to read from stream to get command argument
-    // - argument_for_command: buffer stores argument
-    std::size_t arg_remains;
-    Protocol::Parser parser;
-    std::string argument_for_command;
-    std::unique_ptr<Execute::Command> command_to_execute;
     while (running.load()) {
         _logger->warn("waiting for connection...");
 
@@ -153,8 +144,12 @@ void ServerImpl::OnRun() {
 
         // TODO: Start new thread and process data from/to connection
         {
-            int worker_idx = find_free_worker();
-            if (worker_idx < 0) {
+            // int worker_idx = find_free_worker();
+            if (_workers_current.load() < _MAX_WORKERS_) {
+                _workers_current += 1;
+                std::thread new_worker = std::thread(&ServerImpl::OnWork, this, client_socket);
+                new_worker.detach();
+            } else {
                 _logger->warn("No free workers for client: {}\n", client_socket);
                 static const std::string msg = "No free workers, try later\n";
                 if (send(client_socket, msg.data(), msg.size(), 0) <= 0) {
@@ -162,14 +157,6 @@ void ServerImpl::OnRun() {
                 }
                 close(client_socket);
                 continue;
-            } else {
-                // close(client_socket);
-                _logger->warn("Launching new thread (current workers: {})\n", _workers_current.load());
-                std::lock_guard<std::mutex> guard(_workers_mutex);
-                if (_workers[worker_idx].thread.joinable()) {
-                    _workers[worker_idx].thread.join();
-                }
-                _workers[worker_idx].thread = std::thread(&ServerImpl::OnWork, this, client_socket, worker_idx);
             }
         }
     }
@@ -178,29 +165,13 @@ void ServerImpl::OnRun() {
     _logger->warn("Network stopped");
 }
 
-int ServerImpl::find_free_worker()
-{
-    std::lock_guard<std::mutex> guard(_workers_mutex);
-    for (int i = 0; i < _MAX_WORKERS_; ++i)
-    {
-        if (!_workers[i].busy) {
-             _logger->debug("Worker {} accepted new task", i);
-             _workers_current += 1;
-            _workers[i].busy = true;
-            return i;
-        }
-    }
-    return -1;
-}
-
-void ServerImpl::OnWork(int client_socket, int worker_idx)
+void ServerImpl::OnWork(int client_socket)
 {
 	// Here is connection state
     // - parser: parse state of the stream
     // - command_to_execute: last command parsed out of stream
     // - arg_remains: how many bytes to read from stream to get command argument
     // - argument_for_command: buffer stores argument
-    // int client_socket = w.socket;
     std::size_t arg_remains;
     Protocol::Parser parser;
     std::string argument_for_command;
@@ -293,9 +264,12 @@ void ServerImpl::OnWork(int client_socket, int worker_idx)
     // We are done with this connection
     close(client_socket);
 
-    std::lock_guard<std::mutex> guard(_workers_mutex);
-    _workers[worker_idx].busy = false;
-    _workers_current.store(_workers_current.load() - 1);
+    // std::lock_guard<std::mutex> guard(_workers_mutex);
+    _workers_current -= 1; 
+    // _workers_current.store(_workers_current.load() - 1);
+    if (_workers_current.load() == 0) {
+        _close.notify_one();
+    }
 }
 
 } // namespace MTblocking

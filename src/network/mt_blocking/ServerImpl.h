@@ -5,6 +5,8 @@
 #include <thread>
 #include <mutex>
 #include <array>
+#include <list>
+#include <condition_variable>
 
 #include <afina/network/Server.h>
 
@@ -41,6 +43,10 @@ protected:
     void OnRun();
 
 private:
+    // int find_free_worker();
+    void OnWork(int client_socket);
+
+private:
     // Logger instance
     std::shared_ptr<spdlog::logger> _logger;
 
@@ -55,23 +61,12 @@ private:
     // Thread to run network on
     std::thread _thread;
 
-    struct Worker {
-        std::thread thread;
-        // int socket;
-        bool busy;
-
-        Worker(int client_socket = -1) : thread(), /*socket(client_socket),*/ busy(false) {}
-        ~Worker() { if(thread.joinable()) { thread.join(); } }
-    };
-
     static const int _MAX_WORKERS_ = 256;
     std::atomic<int> _workers_current;
-    std::array<Worker, _MAX_WORKERS_> _workers;
     std::mutex _workers_mutex;
+    std::condition_variable _close;
 
     // Function to execute by thread - Worker
-    int find_free_worker();
-    void OnWork(int client_socket, int worker_idx);
 };
 
 } // namespace MTblocking
