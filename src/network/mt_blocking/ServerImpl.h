@@ -7,6 +7,7 @@
 #include <array>
 #include <list>
 #include <condition_variable>
+#include <set>
 
 #include <afina/network/Server.h>
 
@@ -65,6 +66,8 @@ private:
     // std::atomic<int> _workers_current;
     std::mutex _workers_mutex;
     std::condition_variable _close;
+
+    std::set<int> _openned_socks;
 
     // Function to execute by thread - Worker
 };

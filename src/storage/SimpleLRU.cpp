@@ -14,6 +14,7 @@ bool SimpleLRU::Put(const std::string &key, const std::string &value)
 		// TODO: Do not delete, just update
 		// some update func
 		_delete(it->second.get());
+		// _update_kv(key, value);
 	}
 
 	// std::unique_ptr<lru_node> new_node(new lru_node(key, value));
@@ -34,10 +35,6 @@ bool SimpleLRU::PutIfAbsent(const std::string &key, const std::string &value)
 	} else {
 		return false;
 	}
-	// lru_node *new_node(new lru_node(key, value));
-	// _lru_index.insert(std::make_pair(std::reference_wrapper<const std::string>(new_node->key), 
- //             						 std::reference_wrapper<lru_node>(*new_node)));
-	// return _insert(*new_node);
 }
 
 // See MapBasedGlobalLockImpl.h
@@ -99,22 +96,30 @@ bool SimpleLRU::_insert_kv(const std::string &key, const std::string &value)
 	// return _insert(*new_node.get());
 }
 
-bool _update_kv(const std::string &key, const std::string &value)
+bool SimpleLRU::_update_kv(const std::string &key, const std::string &value)
 {
 
-	// size_t size = key.size() + value.size();
-	// if (size > _max_size) {
-	// 	return false;
-	// }
-	// while (size > _free_size) {
-	// 	_delete_oldest();
-	// }
+	size_t size = key.size() + value.size();
+	if (size > _max_size) {
+		return false;
+	}
 
-	// lru_node *new_node(new lru_node(key, value));
-	// _lru_index.insert(std::make_pair(std::reference_wrapper<const std::string>(new_node->key), 
- //             						 std::reference_wrapper<lru_node>(*new_node)));
-	// return _insert(*new_node);
-	return true;
+	auto it = _lru_index.find(key);
+	size_t prev_size = it->second.get().key.size() + it->second.get().value.size();
+	if (size > _free_size - prev_size) {
+		return false;
+	}
+
+	while (size > _free_size) {
+		_delete_oldest();
+	}
+
+	_delete(it->second.get());
+
+	lru_node *new_node(new lru_node(key, value));
+	_lru_index.insert(std::make_pair(std::reference_wrapper<const std::string>(new_node->key), 
+									 std::reference_wrapper<lru_node>(*new_node)));
+	return _insert(*new_node);
 }
 
 bool SimpleLRU::_move_to_tail(lru_node &node)
