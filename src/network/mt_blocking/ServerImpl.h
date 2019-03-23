@@ -24,7 +24,7 @@ namespace MTblocking {
  */
 class ServerImpl : public Server {
 public:
-    ServerImpl(std::shared_ptr<Afina::Storage> ps, std::shared_ptr<Logging::Service> pl);
+    ServerImpl(std::shared_ptr<Afina::Storage> ps, std::shared_ptr<Logging::Service> pl, int max=256);
     ~ServerImpl();
 
     // See Server.h
@@ -43,7 +43,6 @@ protected:
     void OnRun();
 
 private:
-    // int find_free_worker();
     void OnWork(int client_socket);
 
 private:
@@ -61,8 +60,9 @@ private:
     // Thread to run network on
     std::thread _thread;
 
-    static const int _MAX_WORKERS_ = 256;
-    std::atomic<int> _workers_current;
+    int _MAX_WORKERS_ = 256;
+    int _workers_current;
+    // std::atomic<int> _workers_current;
     std::mutex _workers_mutex;
     std::condition_variable _close;
 

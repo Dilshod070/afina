@@ -71,14 +71,16 @@ void *handle(void *ptr) {
 
         } else if (-1 == ret) {
             /*
-            * Some other error occured.
-            */ close(echoEvent->fd);
+             * Some other error occured.
+             */ 
+            close(echoEvent->fd);
             free(echoEvent);
         } else {
             /*
-           * The entire data was written. Add an read event,
-           * to read more data from the socket.
-           */ printf("\nAdding Read Event.\n");
+             * The entire data was written. Add an read event,
+             * to read more data from the socket.
+             */
+            printf("\nAdding Read Event.\n");
             modifyEpollContext(epollfd, EPOLL_CTL_ADD, echoEvent->fd, EPOLLIN, echoEvent);
         }
     }
@@ -157,7 +159,8 @@ int main(int argc, char **argv) {
 
     /*
     * Main loop that listens for event.
-    */ struct epoll_event *events = calloc(MAXEVENTS, sizeof(struct epoll_event));
+    */
+    struct epoll_event *events = calloc(MAXEVENTS, sizeof(struct epoll_event));
     while (1) {
         int n = epoll_wait(epollfd, events, MAXEVENTS, -1);
         if (-1 == n) {

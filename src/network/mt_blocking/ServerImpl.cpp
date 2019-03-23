@@ -32,7 +32,8 @@ namespace Network {
 namespace MTblocking {
 
 // See Server.h
-ServerImpl::ServerImpl(std::shared_ptr<Afina::Storage> ps, std::shared_ptr<Logging::Service> pl) : Server(ps, pl) {}
+ServerImpl::ServerImpl(std::shared_ptr<Afina::Storage> ps, std::shared_ptr<Logging::Service> pl, int max) :
+                    Server(ps, pl), _MAX_WORKERS_(max) {}
 
 // See Server.h
 ServerImpl::~ServerImpl() {}
@@ -77,30 +78,25 @@ void ServerImpl::Start(uint16_t port, uint32_t n_accept, uint32_t n_workers) {
     }
 
     running.store(true);
-    _workers_current.store(0);
+    // _workers_current.store(0);
+    _workers_current = 0;
     _thread = std::thread(&ServerImpl::OnRun, this);
 }
 
 // See Server.h
 void ServerImpl::Stop() {
-     _logger->debug("Stoping: current workers: {}", _workers_current.load());
-
+    // _logger->debug("Stoping: current workers: {}", _workers_current.load());
     running.store(false);
     shutdown(_server_socket, SHUT_RDWR);
-
-    // std::unique_lock<std::mutex> guard(_workers_mutex) ;
-    // while(_workers_current.load() != 0) {
-    //     _close.wait(guard); // bug here :c
-    // }
 }
 
 // See Server.h
 void ServerImpl::Join() {
-    _logger->debug("Join ???");
+    _logger->debug("Joinini connections");
 
-    std::unique_lock<std::mutex> guard(_workers_mutex) ;
-    while(_workers_current.load() != 0) {
-        _close.wait(guard); // bug here :c
+    std::unique_lock<std::mutex> guard(_workers_mutex);
+    while(_workers_current != 0) {
+        _close.wait(guard);
     }
 
     assert(_thread.joinable());
@@ -144,12 +140,13 @@ void ServerImpl::OnRun() {
 
         // TODO: Start new thread and process data from/to connection
         {
-            // int worker_idx = find_free_worker();
-            if (_workers_current.load() < _MAX_WORKERS_) {
+            std::lock_guard<std::mutex> guard(_workers_mutex);
+            if (_workers_current < _MAX_WORKERS_) {
                 _workers_current += 1;
                 std::thread new_worker = std::thread(&ServerImpl::OnWork, this, client_socket);
                 new_worker.detach();
             } else {
+                // ~guard();
                 _logger->warn("No free workers for client: {}\n", client_socket);
                 static const std::string msg = "No free workers, try later\n";
                 if (send(client_socket, msg.data(), msg.size(), 0) <= 0) {
@@ -264,10 +261,9 @@ void ServerImpl::OnWork(int client_socket)
     // We are done with this connection
     close(client_socket);
 
-    // std::lock_guard<std::mutex> guard(_workers_mutex);
+    std::lock_guard<std::mutex> guard(_workers_mutex);
     _workers_current -= 1; 
-    // _workers_current.store(_workers_current.load() - 1);
-    if (_workers_current.load() == 0) {
+    if (_workers_current == 0) {
         _close.notify_one();
     }
 }

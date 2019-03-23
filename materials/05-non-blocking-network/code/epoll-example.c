@@ -124,9 +124,7 @@ int main(int argc, char *argv[]) {
                 fprintf(stderr, "epoll error\n");
                 close(events[i].data.fd);
                 continue;
-            }
-
-            else if (sfd == events[i].data.fd) {
+            } else if (sfd == events[i].data.fd) {
                 /* We have a notification on the listening socket, which
                    means one or more incoming connections. */
                 while (1) {

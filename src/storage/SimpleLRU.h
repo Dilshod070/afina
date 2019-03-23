@@ -35,6 +35,22 @@ public:
         _lru_head.reset();
     }
 
+private:
+    // LRU cache node
+    using lru_node = struct lru_node {
+        const std::string key;
+        std::string value;
+        lru_node *prev;
+        std::unique_ptr<lru_node> next;
+
+        lru_node(const std::string key, const std::string value) :
+            key(key), value(value),
+            next(nullptr), prev(nullptr)
+        {
+        }
+    };
+
+public:
     // Implements Afina::Storage interface
     bool Put(const std::string &key, const std::string &value) override;
 
@@ -51,20 +67,15 @@ public:
     bool Get(const std::string &key, std::string &value) override;
 
 private:
-    // LRU cache node
-    using lru_node = struct lru_node {
-        const std::string key;
-        std::string value;
-        lru_node *prev;
-        std::unique_ptr<lru_node> next;
+    bool _insert_kv(const std::string &key, const std::string &value);
+    bool _update_kv(const std::string &key, const std::string &value);
 
-        lru_node(const std::string key, const std::string value) :
-            key(key), value(value),
-            next(nullptr), prev(nullptr)
-        {
-        }
-    };
+    bool _move_to_tail(lru_node &node);
+    bool _insert(lru_node &node);
+    bool _delete(lru_node &node);
+    bool _delete_oldest();
 
+private:
     // Maximum number of bytes could be stored in this cache.
     // i.e all (keys+values) must be less the _max_size
     std::size_t _max_size;
@@ -81,11 +92,6 @@ private:
     std::map<std::reference_wrapper<const std::string>, 
              std::reference_wrapper<lru_node>,
              std::less<std::string>> _lru_index;
-
-    bool _move_to_tail(lru_node &node);
-    bool _insert(lru_node &node);
-    bool _delete_oldest();
-    bool _delete(lru_node &node);
 };
 
 } // namespace Backend
