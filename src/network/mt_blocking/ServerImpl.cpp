@@ -86,7 +86,17 @@ void ServerImpl::Start(uint16_t port, uint32_t n_accept, uint32_t n_workers) {
 
 // See Server.h
 void ServerImpl::Stop() {
-    // _logger->debug("Stoping: current workers: {}", _workers_current.load());
+
+    std::lock_guard<std::mutex> guard(_workers_mutex);
+    for (auto client_socket : _openned_socks) {
+        static const std::string msg = "Sorry, the server is shutting down\n";
+        if (send(client_socket, msg.data(), msg.size(), 0) <= 0) {
+            _logger->error("Failed to write response to client: {}", strerror(errno));
+        }
+        shutdown(client_socket, SHUT_RDWR);
+    }
+    _openned_socks.clear();
+
     running.store(false);
     shutdown(_server_socket, SHUT_RDWR);
 }
@@ -96,17 +106,14 @@ void ServerImpl::Join() {
     _logger->debug("Joining connections");
 
     std::unique_lock<std::mutex> guard(_workers_mutex);
-    for (auto client_socket : _openned_socks) {
-        static const std::string msg = "Sorry, the server is shutting down\n";
-        if (send(client_socket, msg.data(), msg.size(), 0) <= 0) {
-            _logger->error("Failed to write response to client: {}", strerror(errno));
-        }
-        shutdown(client_socket, SHUT_RDWR);
-    }
-
     while(_workers_current != 0) {
         _close.wait(guard);
     }
+
+    for (auto client_socket : _openned_socks) {
+        close(client_socket);
+    }
+    _openned_socks.clear();
 
     assert(_thread.joinable());
     _thread.join();

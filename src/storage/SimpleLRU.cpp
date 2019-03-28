@@ -92,6 +92,7 @@ bool SimpleLRU::_insert_kv(const std::string &key, const std::string &value)
 									 std::reference_wrapper<lru_node>(*new_node)
 									 // std::reference_wrapper<lru_node>(*new_node.get())
 	));
+	_free_size -= size;
 	return _insert(*new_node);
 	// return _insert(*new_node.get());
 }
@@ -119,6 +120,7 @@ bool SimpleLRU::_update_kv(const std::string &key, const std::string &value)
 	lru_node *new_node(new lru_node(key, value));
 	_lru_index.insert(std::make_pair(std::reference_wrapper<const std::string>(new_node->key), 
 									 std::reference_wrapper<lru_node>(*new_node)));
+	_free_size -= size;
 	return _insert(*new_node);
 }
 
@@ -146,25 +148,15 @@ bool SimpleLRU::_move_to_tail(lru_node &node)
 
 bool SimpleLRU::_insert(lru_node &node)
 {
-	// TODO: Check sizes before calling this
-	size_t size = node.key.size() + node.value.size();
-	if (size > _max_size) {
-		return false;
-	}
-	while (size > _free_size) {
-		_delete_oldest();
-	}
-	_free_size -= size;
-	// ^
 	if (_lru_tail == nullptr) {
 		node.next = nullptr;
 		node.prev = nullptr;
-		_lru_tail = &node;
 		_lru_head.reset(&node);
+		_lru_tail = &node;
 	} else {
-		_lru_tail->next.reset(&node);
 		node.next = nullptr;
 		node.prev = _lru_tail;
+		_lru_tail->next.reset(&node);
 		_lru_tail = &node;
 	}
 	return true;
@@ -172,6 +164,7 @@ bool SimpleLRU::_insert(lru_node &node)
 
 bool SimpleLRU::_delete(lru_node &node)
 {
+	// TODO: delete from map
 	if (node.prev == nullptr){ // Node is first
 		return _delete_oldest();
 	} else {
@@ -191,6 +184,7 @@ bool SimpleLRU::_delete(lru_node &node)
 
 bool SimpleLRU::_delete_oldest()
 {
+	// TODO: delete from map
 	size_t size = _lru_head->key.size() + _lru_head->value.size();
 	_lru_index.erase(_lru_head->key);
 	if (_lru_head->next == nullptr) {
