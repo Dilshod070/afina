@@ -17,7 +17,7 @@ namespace STnonblock {
 
 // See Connection.h
 void Connection::Start() {
-	std::cout << "Start" << std::endl;
+	// std::cout << "Start" << std::endl;
 
 	_alive = true;
 	// TODO: initialize this in consntructor
@@ -33,25 +33,25 @@ void Connection::Start() {
 // See Connection.h
 void Connection::OnError()
 {
-	std::cout << "OnError" << std::endl;
+	// std::cout << "OnError" << std::endl;
 	_alive = false;
 }
 
 // See Connection.h
 void Connection::OnClose()
 {
-	std::cout << "OnClose" << std::endl;
+	// std::cout << "OnClose" << std::endl;
 	_alive = false;
 }
 
 // See Connection.h
 void Connection::DoRead()
 {
-	std::cout << "DoRead" << std::endl;
+	// std::cout << "DoRead" << std::endl;
 
     try {
         int readed_bytes = -1;
-        while ((readed_bytes = read(_socket, _read_buffer + _read_queue_size, sizeof(_read_buffer - _read_queue_size))) > 0) {
+        if ((readed_bytes = read(_socket, _read_buffer + _read_queue_size, sizeof(_read_buffer - _read_queue_size))) > 0) {
         	_read_queue_size += readed_bytes;
             // _logger->debug("Got {} bytes from socket", _read_queue_size);
 
@@ -106,7 +106,7 @@ void Connection::DoRead()
                     // Send response
                     result += "\r\n";
                     {
-                    	// std::lock_guard<std::mutex> guard(_answ_mutex);
+                    	std::lock_guard<std::mutex> guard(_answ_mutex);
                     	_answers.push(result);
                     }
                     _write_queue_size += result.size();
@@ -134,20 +134,16 @@ void Connection::DoRead()
 void Connection::DoWrite()
 {
 	std::cout << "DoWrite" << std::endl;
-	while (true) {
-		auto result = _answers.front();
-		std::memcpy (_write_buffer, result.c_str() + _sent_last, result.size() - _sent_last);
-		int sent = send(_socket, _write_buffer, result.size() - _sent_last, 0);
-		_write_queue_size -= sent;
-		_sent_last += sent;
-		if (_sent_last == result.size()) {
-			// std::lock_guard<std::mutex> guard(_answ_mutex);
-			_answers.pop();
-			if (_answers.empty()) {
-				_event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR;
-				std::cout << "End with this" << std::endl;
-				break;
-			}
+	auto result = _answers.front();
+	std::memcpy (_write_buffer, result.c_str() + _sent_last, result.size() - _sent_last);
+	int sent = send(_socket, _write_buffer, result.size() - _sent_last, 0);
+	_write_queue_size -= sent;
+	_sent_last += sent;
+	if (_sent_last == result.size()) {
+		std::lock_guard<std::mutex> guard(_answ_mutex);
+		_answers.pop();
+		if (_answers.empty()) {
+			_event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR;
 		}
 	}
 }
