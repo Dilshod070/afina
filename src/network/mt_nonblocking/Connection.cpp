@@ -1,56 +1,53 @@
 #include "Connection.h"
 
 #include <iostream>
-#include <vector>
-#include <string>
-#include <queue>
 #include <mutex>
-#include <unistd.h>
+#include <queue>
+#include <string>
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <unistd.h>
+#include <vector>
 
 namespace Afina {
 namespace Network {
 namespace MTnonblock {
 
 // See Connection.h
-void Connection::Start()
-{
-	std::cout << "Start" << std::endl;
+void Connection::Start() {
+    std::cout << "Start" << std::endl;
 
-	_read_queue_size = 0;
-	_write_queue_size = 0;
-	_sent_last = 0;
+    _read_queue_size = 0;
+    _write_queue_size = 0;
+    _sent_last = 0;
 
-	_event.data.fd = _socket;
-	_event.data.ptr = this;
-	_event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLONESHOT;
+    _event.data.fd = _socket;
+    _event.data.ptr = this;
+    _event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLONESHOT;
 }
 
 // See Connection.h
-void Connection::OnError()
-{ 
-	std::cout << "OnError" << std::endl;
-	_alive = false;
+void Connection::OnError() {
+    std::cout << "OnError" << std::endl;
+    _alive = false;
 }
 
 // See Connection.h
-void Connection::OnClose()
-{
-	std::cout << "OnClose" << std::endl;
-	_alive = false;
+void Connection::OnClose() {
+    std::cout << "OnClose" << std::endl;
+    _alive = false;
 }
 
 // See Connection.h
-void Connection::DoRead()
-{
-	std::cout << "DoRead" << std::endl;
-	try {
+void Connection::DoRead() {
+    std::cout << "DoRead" << std::endl;
+    try {
         int readed_bytes = -1;
-        if ((readed_bytes = read(_socket, _read_buffer + _read_queue_size, sizeof(_read_buffer) - _read_queue_size)) > 0) {
-        	_read_queue_size += readed_bytes;
+        if ((readed_bytes = read(_socket, _read_buffer + _read_queue_size, sizeof(_read_buffer) - _read_queue_size)) >
+            0) {
+            _read_queue_size += readed_bytes;
             // _logger->debug("Got {} bytes from socket", _read_queue_size);
 
             // Single block of data readed from the socket could trigger inside actions a multiple times,
@@ -104,8 +101,8 @@ void Connection::DoRead()
                     // Send response
                     result += "\r\n";
                     {
-                    	std::lock_guard<std::mutex> guard(_answ_mutex);
-                    	_answers.push(result);
+                        std::lock_guard<std::mutex> guard(_answ_mutex);
+                        _answers.push(result);
                     }
                     _write_queue_size += result.size();
                     _event.events = EPOLLOUT | EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLONESHOT;
@@ -129,22 +126,21 @@ void Connection::DoRead()
 }
 
 // See Connection.h
-void Connection::DoWrite()
-{
-	std::cout << "DoWrite" << std::endl;
-	auto result = _answers.front();
-	std::memcpy(_write_buffer, result.c_str(), result.size());
-	int sent = send(_socket, _write_buffer + _sent_last, result.size() - _sent_last, 0);
-	_write_queue_size -= sent;
-	_sent_last += sent;
-	if (_sent_last == result.size()) {
-		_sent_last = 0;
-		std::lock_guard<std::mutex> guard(_answ_mutex);
-		_answers.pop();
-		if (_answers.empty()) {
-			_event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLONESHOT;
-		}
-	}
+void Connection::DoWrite() {
+    std::cout << "DoWrite" << std::endl;
+    auto result = _answers.front();
+    std::memcpy(_write_buffer, result.c_str(), result.size());
+    int sent = send(_socket, _write_buffer + _sent_last, result.size() - _sent_last, 0);
+    _write_queue_size -= sent;
+    _sent_last += sent;
+    if (_sent_last == result.size()) {
+        _sent_last = 0;
+        std::lock_guard<std::mutex> guard(_answ_mutex);
+        _answers.pop();
+        if (_answers.empty()) {
+            _event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLONESHOT;
+        }
+    }
 }
 
 } // namespace MTnonblock

@@ -200,7 +200,8 @@ void ServerImpl::OnNewConnection(int epoll_descr) {
 
         // Print host and service info.
         char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
-        int retval = getnameinfo(&in_addr, in_len, hbuf, sizeof hbuf, sbuf, sizeof sbuf, NI_NUMERICHOST | NI_NUMERICSERV);
+        int retval =
+            getnameinfo(&in_addr, in_len, hbuf, sizeof hbuf, sbuf, sizeof sbuf, NI_NUMERICHOST | NI_NUMERICSERV);
         if (retval == 0) {
             _logger->info("Accepted connection on descriptor {} (host={}, port={})\n", infd, hbuf, sbuf);
         }

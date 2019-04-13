@@ -1,14 +1,14 @@
 #include "ServerImpl.h"
 
+#include <array>
 #include <cassert>
+#include <condition_variable>
 #include <cstring>
 #include <iostream>
 #include <memory>
-#include <stdexcept>
 #include <mutex>
-#include <array>
+#include <stdexcept>
 #include <thread>
-#include <condition_variable>
 
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -32,8 +32,8 @@ namespace Network {
 namespace MTblocking {
 
 // See Server.h
-ServerImpl::ServerImpl(std::shared_ptr<Afina::Storage> ps, std::shared_ptr<Logging::Service> pl, int max) :
-                    Server(ps, pl), _MAX_WORKERS_(max) {}
+ServerImpl::ServerImpl(std::shared_ptr<Afina::Storage> ps, std::shared_ptr<Logging::Service> pl, int max)
+    : Server(ps, pl), _MAX_WORKERS_(max) {}
 
 // See Server.h
 ServerImpl::~ServerImpl() {}
@@ -105,7 +105,7 @@ void ServerImpl::Join() {
     _logger->debug("Joining connections");
 
     std::unique_lock<std::mutex> guard(_workers_mutex);
-    while(_workers_current != 0) {
+    while (_workers_current != 0) {
         _close.wait(guard);
     }
 
@@ -178,9 +178,8 @@ void ServerImpl::OnRun() {
     _logger->warn("Network stopped");
 }
 
-void ServerImpl::OnWork(int client_socket)
-{
-	// Here is connection state
+void ServerImpl::OnWork(int client_socket) {
+    // Here is connection state
     // - parser: parse state of the stream
     // - command_to_execute: last command parsed out of stream
     // - arg_remains: how many bytes to read from stream to get command argument
@@ -243,7 +242,7 @@ void ServerImpl::OnWork(int client_socket)
                     std::string result;
                     command_to_execute->Execute(*pStorage, argument_for_command, result);
 
-                    // Send response 
+                    // Send response
                     result += "\r\n";
                     if (send(client_socket, result.data(), result.size(), 0) <= 0) {
                         throw std::runtime_error("Failed to send response");
@@ -278,7 +277,7 @@ void ServerImpl::OnWork(int client_socket)
     std::lock_guard<std::mutex> guard(_workers_mutex);
     _openned_socks.erase(client_socket);
     close(client_socket);
-    _workers_current -= 1; 
+    _workers_current -= 1;
     if (_workers_current == 0) {
         _close.notify_one();
     }

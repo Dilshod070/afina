@@ -3,14 +3,14 @@
 
 #include <cstring>
 #include <iostream>
-#include <queue>
 #include <mutex>
+#include <queue>
 
 #include <sys/epoll.h>
 
-#include <afina/execute/Command.h>
-#include <afina/Storage.h>
 #include "protocol/Parser.h"
+#include <afina/Storage.h>
+#include <afina/execute/Command.h>
 
 namespace Afina {
 namespace Network {
@@ -18,7 +18,7 @@ namespace MTnonblock {
 
 class Connection {
 public:
-    Connection(int s,  std::shared_ptr<Afina::Storage> store) : _socket(s), _alive(false) {
+    Connection(int s, std::shared_ptr<Afina::Storage> store) : _socket(s), _alive(false) {
         std::memset(&_event, 0, sizeof(struct epoll_event));
         _event.data.ptr = this;
         pStorage = store;
