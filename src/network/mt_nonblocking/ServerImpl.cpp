@@ -39,6 +39,7 @@ ServerImpl::~ServerImpl() {}
 void ServerImpl::Start(uint16_t port, uint32_t n_acceptors, uint32_t n_workers) {
     _logger = pLogging->select("network");
     _logger->info("Start network service");
+    _logger->debug("N_ACCEPROTS: {}", n_acceptors);
 
     sigset_t sig_mask;
     sigemptyset(&sig_mask);
@@ -95,6 +96,7 @@ void ServerImpl::Start(uint16_t port, uint32_t n_acceptors, uint32_t n_workers) 
     }
 
     _workers.reserve(n_workers);
+    _logger->debug("Starting workers: {}", n_workers);
     for (int i = 0; i < n_workers; i++) {
         _workers.emplace_back(pStorage, pLogging);
         _workers.back().Start(_data_epoll_fd);
@@ -102,6 +104,7 @@ void ServerImpl::Start(uint16_t port, uint32_t n_acceptors, uint32_t n_workers) 
 
     // Start acceptors
     _acceptors.reserve(n_acceptors);
+    _logger->debug("Starting acceptors: {}", n_acceptors);
     for (int i = 0; i < n_acceptors; i++) {
         _acceptors.emplace_back(&ServerImpl::OnRun, this);
     }
@@ -193,7 +196,7 @@ void ServerImpl::OnRun() {
                 }
 
                 // Register the new FD to be monitored by epoll.
-                Connection *pc = new Connection(infd);
+                Connection *pc = new Connection(infd, pStorage);
                 if (pc == nullptr) {
                     throw std::runtime_error("Failed to allocate connection");
                 }

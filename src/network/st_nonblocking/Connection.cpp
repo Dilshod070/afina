@@ -48,10 +48,9 @@ void Connection::OnClose()
 void Connection::DoRead()
 {
 	// std::cout << "DoRead" << std::endl;
-
     try {
         int readed_bytes = -1;
-        if ((readed_bytes = read(_socket, _read_buffer + _read_queue_size, sizeof(_read_buffer - _read_queue_size))) > 0) {
+        if ((readed_bytes = read(_socket, _read_buffer + _read_queue_size, sizeof(_read_buffer) - _read_queue_size)) > 0) {
         	_read_queue_size += readed_bytes;
             // _logger->debug("Got {} bytes from socket", _read_queue_size);
 
@@ -106,7 +105,7 @@ void Connection::DoRead()
                     // Send response
                     result += "\r\n";
                     {
-                    	std::lock_guard<std::mutex> guard(_answ_mutex);
+                    	// std::lock_guard<std::mutex> guard(_answ_mutex);
                     	_answers.push(result);
                     }
                     _write_queue_size += result.size();
@@ -117,10 +116,10 @@ void Connection::DoRead()
                     argument_for_command.resize(0);
                     parser.Reset();
                 }
-            } // while (readed_bytes)
+            } // while (_read_queue_size > 0)
         }
 
-        if (_read_queue_size == 0) {
+        if (readed_bytes == 0) {
             // _logger->debug("Connection closed");
         } else {
             throw std::runtime_error(std::string(strerror(errno)));
@@ -133,14 +132,15 @@ void Connection::DoRead()
 // See Connection.h
 void Connection::DoWrite()
 {
-	std::cout << "DoWrite" << std::endl;
+	// std::cout << "DoWrite" << std::endl;
 	auto result = _answers.front();
-	std::memcpy (_write_buffer, result.c_str() + _sent_last, result.size() - _sent_last);
-	int sent = send(_socket, _write_buffer, result.size() - _sent_last, 0);
+	std::memcpy(_write_buffer, result.c_str(), result.size());
+	int sent = send(_socket, _write_buffer + _sent_last, result.size() - _sent_last, 0);
 	_write_queue_size -= sent;
 	_sent_last += sent;
 	if (_sent_last == result.size()) {
-		std::lock_guard<std::mutex> guard(_answ_mutex);
+		_sent_last = 0;
+		// std::lock_guard<std::mutex> guard(_answ_mutex);
 		_answers.pop();
 		if (_answers.empty()) {
 			_event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR;
