@@ -3,6 +3,7 @@
 #include <cassert>
 #include <functional>
 #include <iostream>
+#include <set>
 
 #include <netdb.h>
 #include <sys/epoll.h>
@@ -21,18 +22,19 @@ namespace Network {
 namespace MTnonblock {
 
 // See Worker.h
-Worker::Worker(std::shared_ptr<Afina::Storage> ps, std::shared_ptr<Afina::Logging::Service> pl)
-    : _pStorage(ps), _pLogging(pl), isRunning(false), _epoll_fd(-1) {
+Worker::Worker(std::shared_ptr<Afina::Storage> ps, std::shared_ptr<Afina::Logging::Service> pl, std::set<Connection *> &cons)
+    : _pStorage(ps), _pLogging(pl), isRunning(false), _epoll_fd(-1), _connections(cons) {
     // TODO: implementation here
 }
 
 // See Worker.h
 Worker::~Worker() {
     // TODO: implementation here
+    // _connections.clear();
 }
 
 // See Worker.h
-Worker::Worker(Worker &&other) { *this = std::move(other); }
+Worker::Worker(Worker &&other) : _connections(other._connections) { *this = std::move(other); }
 
 // See Worker.h
 Worker &Worker::operator=(Worker &&other) {
@@ -111,7 +113,8 @@ void Worker::OnRun() {
                 pconn->_event.events |= EPOLLONESHOT;
                 if (epoll_ctl(_epoll_fd, EPOLL_CTL_MOD, pconn->_socket, &pconn->_event)) {
                     pconn->OnError();
-                    delete pconn;
+                    _connections.erase(pconn);
+                    // delete pconn;
                 }
             }
             // Or delete closed one
@@ -119,7 +122,8 @@ void Worker::OnRun() {
                 if (epoll_ctl(_epoll_fd, EPOLL_CTL_DEL, pconn->_socket, &pconn->_event)) {
                     std::cerr << "Failed to delete connection!" << std::endl;
                 }
-                delete pconn;
+                _connections.erase(pconn);
+                // delete pconn;
             }
         }
         // TODO: Select timeout...

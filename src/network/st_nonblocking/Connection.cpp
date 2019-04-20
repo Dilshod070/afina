@@ -23,7 +23,6 @@ void Connection::Start() {
     _alive = true;
     // TODO: initialize this in consntructor
     _read_queue_size = 0;
-    _write_queue_size = 0;
     _sent_last = 0;
 
     _event.data.ptr = this;
@@ -106,7 +105,6 @@ void Connection::DoRead() {
                         _event.events = EPOLLOUT | EPOLLIN | EPOLLRDHUP | EPOLLERR;
                     }
                     _answers.push_back(result);
-                    _write_queue_size += result.size();
 
                     // Prepare for the next command
                     command_to_execute.reset();
@@ -154,7 +152,7 @@ void Connection::DoWrite() {
         return;
     }
     _sent_last += sent;
-    int i;
+    int i = 0;
     while(i < _answers.size() && _sent_last >= _answers[i].size()) {
         _sent_last -= _answers[i].size();
         ++i;

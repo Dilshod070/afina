@@ -98,7 +98,7 @@ void ServerImpl::Start(uint16_t port, uint32_t n_acceptors, uint32_t n_workers) 
     _workers.reserve(n_workers);
     _logger->debug("Starting workers: {}", n_workers);
     for (int i = 0; i < n_workers; i++) {
-        _workers.emplace_back(pStorage, pLogging);
+        _workers.emplace_back(pStorage, pLogging, _connections);
         _workers.back().Start(_data_epoll_fd);
     }
 
@@ -117,6 +117,12 @@ void ServerImpl::Stop() {
     for (auto &w : _workers) {
         w.Stop();
     }
+
+    for (auto c : _connections) {
+        close(c->_socket);
+        delete c; // <- Is he smiling? Is he crying?
+    }
+    _connections.clear();
 
     // Wakeup threads that are sleep on epoll_wait
     if (eventfd_write(_event_fd, 1)) {
@@ -200,14 +206,17 @@ void ServerImpl::OnRun() {
                 if (pc == nullptr) {
                     throw std::runtime_error("Failed to allocate connection");
                 }
+                _connections.insert(pc);
 
                 // Register connection in worker's epoll
                 pc->Start();
                 if (pc->isAlive()) {
-                    pc->_event.events |= EPOLLONESHOT;
-                    if (epoll_ctl(_data_epoll_fd, EPOLL_CTL_MOD, pc->_socket, &pc->_event)) {
+                    // pc->_event.events |= EPOLLONESHOT;
+                    if (epoll_ctl(_data_epoll_fd, EPOLL_CTL_ADD, pc->_socket, &pc->_event)) {
+                        _logger->error("OnError {}\n", strerror(errno));
                         pc->OnError();
                         delete pc;
+                        _connections.erase(pc);
                     }
                 }
             }

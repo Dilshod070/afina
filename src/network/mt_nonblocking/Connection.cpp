@@ -8,6 +8,7 @@
 #include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/uio.h>
 #include <unistd.h>
 #include <vector>
 
@@ -18,11 +19,11 @@ namespace MTnonblock {
 // See Connection.h
 void Connection::Start() {
     std::cout << "Start" << std::endl;
-
+    
+    std::lock_guard<std::mutex> guard(_alive_mutex);
+    _alive = true;
     _read_queue_size = 0;
-    _write_queue_size = 0;
     _sent_last = 0;
-
     _event.data.fd = _socket;
     _event.data.ptr = this;
     _event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLONESHOT;
@@ -31,18 +32,25 @@ void Connection::Start() {
 // See Connection.h
 void Connection::OnError() {
     std::cout << "OnError" << std::endl;
+
+    std::lock_guard<std::mutex> guard(_alive_mutex);
     _alive = false;
+    shutdown(_socket, SHUT_RDWR);
 }
 
 // See Connection.h
 void Connection::OnClose() {
     std::cout << "OnClose" << std::endl;
+
+    std::lock_guard<std::mutex> guard(_alive_mutex);
     _alive = false;
+    shutdown(_socket, SHUT_RDWR);
 }
 
 // See Connection.h
 void Connection::DoRead() {
     std::cout << "DoRead" << std::endl;
+
     try {
         int readed_bytes = -1;
         if ((readed_bytes = read(_socket, _read_buffer + _read_queue_size, sizeof(_read_buffer) - _read_queue_size)) >
@@ -97,15 +105,14 @@ void Connection::DoRead() {
 
                     std::string result;
                     command_to_execute->Execute(*pStorage, argument_for_command, result);
-
-                    // Send response
                     result += "\r\n";
                     {
                         std::lock_guard<std::mutex> guard(_answ_mutex);
-                        _answers.push(result);
+                        if (_answers.empty()) {
+                            _event.events = EPOLLOUT | EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLONESHOT;
+                        }
+                        _answers.push_back(result);
                     }
-                    _write_queue_size += result.size();
-                    _event.events = EPOLLOUT | EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLONESHOT;
 
                     // Prepare for the next command
                     command_to_execute.reset();
@@ -128,17 +135,50 @@ void Connection::DoRead() {
 // See Connection.h
 void Connection::DoWrite() {
     std::cout << "DoWrite" << std::endl;
-    auto result = _answers.front();
-    std::memcpy(_write_buffer, result.c_str(), result.size());
-    int sent = send(_socket, _write_buffer + _sent_last, result.size() - _sent_last, 0);
-    _write_queue_size -= sent;
-    _sent_last += sent;
-    if (_sent_last == result.size()) {
-        _sent_last = 0;
+    // auto result = _answers.front();
+    // std::memcpy(_write_buffer, result.c_str(), result.size());
+    // int sent = send(_socket, _write_buffer + _sent_last, result.size() - _sent_last, 0);
+    // _write_queue_size -= sent;
+    // _sent_last += sent;
+    // if (_sent_last == result.size()) {
+    //     _sent_last = 0;
+    //     std::lock_guard<std::mutex> guard(_answ_mutex);
+    //     _answers.pop();
+    //     if (_answers.empty()) {
+    //         _event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLONESHOT;
+    //     }
+    // }
+
+    struct iovec *answ_iov;
+    {
         std::lock_guard<std::mutex> guard(_answ_mutex);
-        _answers.pop();
+        answ_iov = new struct iovec[_answers.size()];
+        answ_iov[0].iov_len = _answers[0].size() - _sent_last;
+        answ_iov[0].iov_base = static_cast<char *>(&_answers[0][0]) + (_sent_last);
+        for (int i = 1; i < _answers.size(); ++i) {
+            answ_iov[i].iov_len = _answers[i].size();
+            answ_iov[i].iov_base = &(_answers[i][0]);
+        }
+    }
+
+    int sent = writev(_socket, answ_iov, _answers.size());
+    delete[] answ_iov;
+    if (sent < 0) {
+        OnError();
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> guard(_answ_mutex);
+        _sent_last += sent;
+        int i = 0;
+        while(i < _answers.size() && _sent_last >= _answers[i].size()) {
+            _sent_last -= _answers[i].size();
+            ++i;
+        }
+        _answers.erase(_answers.begin(), _answers.begin() + i);
         if (_answers.empty()) {
-            _event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLONESHOT;
+            _event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR;
         }
     }
 }

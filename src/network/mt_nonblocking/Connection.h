@@ -18,13 +18,16 @@ namespace MTnonblock {
 
 class Connection {
 public:
-    Connection(int s, std::shared_ptr<Afina::Storage> store) : _socket(s), _alive(false) {
+    Connection(int s, std::shared_ptr<Afina::Storage> store) : _socket(s) {
         std::memset(&_event, 0, sizeof(struct epoll_event));
         _event.data.ptr = this;
         pStorage = store;
     }
 
-    inline bool isAlive() const { return _alive; }
+    inline bool isAlive() { 
+        std::lock_guard<std::mutex> guard(_alive_mutex);
+        return _alive;
+    }
 
     void Start();
 
@@ -46,17 +49,15 @@ private:
     std::unique_ptr<Execute::Command> command_to_execute;
 
     bool _alive;
+    std::mutex _alive_mutex;
     int _socket;
     struct epoll_event _event;
 
     std::size_t _read_queue_size;
     char _read_buffer[256];
-    std::size_t _write_queue_size;
     std::size_t _sent_last;
-    char _write_buffer[256];
 
-    // std::vector<std::string> _answers;
-    std::queue<std::string> _answers;
+    std::vector<std::string> _answers;
     std::mutex _answ_mutex;
 };
 
