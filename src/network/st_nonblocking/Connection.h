@@ -55,7 +55,7 @@ private:
     std::size_t _sent_last;
     char _write_buffer[256];
 
-    std::queue<std::string> _answers;
+    std::vector<std::string> _answers;
     std::mutex _answ_mutex;
 };
 

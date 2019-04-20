@@ -8,6 +8,7 @@
 #include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/uio.h>
 #include <unistd.h>
 #include <vector>
 
@@ -25,7 +26,6 @@ void Connection::Start() {
     _write_queue_size = 0;
     _sent_last = 0;
 
-    _event.data.fd = _socket;
     _event.data.ptr = this;
     _event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR;
 }
@@ -102,12 +102,11 @@ void Connection::DoRead() {
 
                     // Send response
                     result += "\r\n";
-                    {
-                        // std::lock_guard<std::mutex> guard(_answ_mutex);
-                        _answers.push(result);
+                    if (_answers.empty()) {
+                        _event.events = EPOLLOUT | EPOLLIN | EPOLLRDHUP | EPOLLERR;
                     }
+                    _answers.push_back(result);
                     _write_queue_size += result.size();
-                    _event.events = EPOLLOUT | EPOLLIN | EPOLLRDHUP | EPOLLERR;
 
                     // Prepare for the next command
                     command_to_execute.reset();
@@ -130,18 +129,39 @@ void Connection::DoRead() {
 // See Connection.h
 void Connection::DoWrite() {
     // std::cout << "DoWrite" << std::endl;
-    auto result = _answers.front();
-    std::memcpy(_write_buffer, result.c_str(), result.size());
-    int sent = send(_socket, _write_buffer + _sent_last, result.size() - _sent_last, 0);
-    _write_queue_size -= sent;
-    _sent_last += sent;
-    if (_sent_last == result.size()) {
-        _sent_last = 0;
+    // auto result = _answers.front();
+    // std::memcpy(_write_buffer, result.c_str(), result.size());
+    // int sent = send(_socket, _write_buffer + _sent_last, result.size() - _sent_last, 0);
+    // _write_queue_size -= sent;
+    // _sent_last += sent;
+    // if (_sent_last == result.size()) {
+        // _sent_last = 0;
         // std::lock_guard<std::mutex> guard(_answ_mutex);
-        _answers.pop();
-        if (_answers.empty()) {
-            _event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR;
-        }
+        // _answers.pop();
+    // }
+
+    iovec answ_iov[_answers.size()];
+    answ_iov[0].iov_len = _answers[0].size() - _sent_last;
+    answ_iov[0].iov_base = static_cast<char *>(&_answers[0][0]) + (_sent_last);
+    for (int i = 1; i < _answers.size(); ++i) {
+        answ_iov[i].iov_len = _answers[i].size();
+        answ_iov[i].iov_base = &(_answers[i][0]);
+    }
+
+    int sent = writev(_socket, answ_iov, _answers.size());
+    if (sent < 0) {
+        OnError();
+        return;
+    }
+    _sent_last += sent;
+    int i;
+    while(i < _answers.size() && _sent_last >= _answers[i].size()) {
+        _sent_last -= _answers[i].size();
+        ++i;
+    }
+    _answers.erase(_answers.begin(), _answers.begin() + i);
+    if (_answers.empty()) {
+        _event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR;
     }
 }
 
