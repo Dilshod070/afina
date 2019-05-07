@@ -1,6 +1,7 @@
 #include "Connection.h"
 
 #include <iostream>
+#include <cassert>
 #include <mutex>
 #include <queue>
 #include <string>
@@ -18,21 +19,16 @@ namespace MTnonblock {
 
 // See Connection.h
 void Connection::Start() {
-    std::cout << "Start" << std::endl;
-    
     std::lock_guard<std::mutex> guard(_alive_mutex);
     _alive = true;
     _read_queue_size = 0;
     _sent_last = 0;
-    _event.data.fd = _socket;
     _event.data.ptr = this;
     _event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLONESHOT;
 }
 
 // See Connection.h
 void Connection::OnError() {
-    std::cout << "OnError" << std::endl;
-
     std::lock_guard<std::mutex> guard(_alive_mutex);
     _alive = false;
     shutdown(_socket, SHUT_RDWR);
@@ -40,8 +36,6 @@ void Connection::OnError() {
 
 // See Connection.h
 void Connection::OnClose() {
-    std::cout << "OnClose" << std::endl;
-
     std::lock_guard<std::mutex> guard(_alive_mutex);
     _alive = false;
     shutdown(_socket, SHUT_RDWR);
@@ -49,7 +43,7 @@ void Connection::OnClose() {
 
 // See Connection.h
 void Connection::DoRead() {
-    std::cout << "DoRead" << std::endl;
+	std::lock_guard<std::mutex> aguard(_alive_mutex);
 
     try {
         int readed_bytes = -1;
@@ -134,25 +128,12 @@ void Connection::DoRead() {
 
 // See Connection.h
 void Connection::DoWrite() {
-    std::cout << "DoWrite" << std::endl;
-    // auto result = _answers.front();
-    // std::memcpy(_write_buffer, result.c_str(), result.size());
-    // int sent = send(_socket, _write_buffer + _sent_last, result.size() - _sent_last, 0);
-    // _write_queue_size -= sent;
-    // _sent_last += sent;
-    // if (_sent_last == result.size()) {
-    //     _sent_last = 0;
-    //     std::lock_guard<std::mutex> guard(_answ_mutex);
-    //     _answers.pop();
-    //     if (_answers.empty()) {
-    //         _event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLONESHOT;
-    //     }
-    // }
-
+	std::lock_guard<std::mutex> aguard(_alive_mutex);
     struct iovec *answ_iov;
     {
         std::lock_guard<std::mutex> guard(_answ_mutex);
         answ_iov = new struct iovec[_answers.size()];
+        assert(_answers[0].size() > _sent_last);
         answ_iov[0].iov_len = _answers[0].size() - _sent_last;
         answ_iov[0].iov_base = static_cast<char *>(&_answers[0][0]) + (_sent_last);
         for (int i = 1; i < _answers.size(); ++i) {
