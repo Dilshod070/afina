@@ -14,6 +14,7 @@ void Append::Execute(Storage &storage, const std::string &args, std::string &out
         out.assign("NOT_STORED");
         return;
     }
+    value = value.substr(0, value.size() - 2);
     storage.Put(_key, value + args);
     out.assign("STORED");
 }
